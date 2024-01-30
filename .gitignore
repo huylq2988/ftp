@@ -1,0 +1,20 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# production
+**/FTP.Database/FTP.PMIS/obj/
+**/FTP.Database/FTP.PMIS/bin/
+
+**/FTP.App/obj/
+**/FTP.App/bin/
+**/FTP.Common/obj/
+**/FTP.Common/bin/
+**/FTP.Service/obj/
+**/FTP.Service/bin/
+**/FTP.Encode/obj/
+**/FTP.Encode/bin/
+**/TestService/
+
+# misc
+**/.vs/
+**/.vscode/
+**/packages/
