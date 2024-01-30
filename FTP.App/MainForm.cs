@@ -72,11 +72,9 @@ namespace FTP
             {
                 return;
             }
-            ManualUpload form = new ManualUpload();
-            //form.MdiParent = this;
-            //form.Show();
-            form.Dock = DockStyle.Fill;
-            form.ShowDialog();
+            //ManualUpload form = new ManualUpload();
+            //form.Dock = DockStyle.Fill;
+            //form.ShowDialog();
         }
 
         private void DisableControls()
@@ -218,9 +216,9 @@ namespace FTP
 
         public static string sqlRuntime = @"select p.Folder, l.LogDate, l.LogTime, l.TagName, l.LastValue from BwAnalogTable l
 					INNER JOIN Params p ON l.TagName = p.TagName
-					where p.Interval is not null and p.Enable=1 --and Folder = 'S1' 
-					and l.LogDate = CONVERT(VARCHAR, DATEADD(MI, -1, GETDATE()), 11) 
-					and l.LogTime = SUBSTRING(CONVERT(VARCHAR, DATEADD(MI, -1, GETDATE()), 20), 12, 5) + ':00'";
+					where p.Interval is not null and p.Enable = 1
+					and l.LogDate = CONVERT(VARCHAR, DATEADD(MI, -1, @datetime), 11) 
+					and l.LogTime = SUBSTRING(CONVERT(VARCHAR, DATEADD(MI, -1, @datetime), 20), 12, 5) + ':00'";
 
         public static void Run()
         {
@@ -351,110 +349,63 @@ namespace FTP
         {
             System.Timers.Timer myTimer = (System.Timers.Timer)sender;
             myTimer.Stop();
-            
-            //Select Data
-            var sqlParam = @"select ID,TagName,Description,Unit,Device,Ameterid,Interval,Enable
-                    from Params                    
-                    where Interval is not null and Enable=1";
-            
 
-            var lstParams = MainForm._repositoryMiddle.GetListFromParameters<HisConfig>(sqlParam, 1, null);
-            Stopwatch stopWatch = new Stopwatch();
-            stopWatch.Start();
-            if (lstParams != null && lstParams.Count > 0)
+            var now = DateTime.Now;
+            if (now.Minute % 5 == 1)
             {
-                //for (int i = 0; i < lstParams.Count; i++)
-                //{
-                //    DoQueryAndPushFtp(lstParams[i]);
-                //}
-                var options = new ParallelOptions()
+                var parameters = new Dictionary<string, object>()
                 {
-                    MaxDegreeOfParallelism = 5
+                    ["@datetime"] = now,
                 };
-                int n = 10;
-                Parallel.For(0, lstParams.Count, options, i =>
+                var lstAnalogs = MainForm._repositoryRuntime.GetListFromParameters<AnalogTable>(sqlRuntime, 1, parameters);
+                var PushingDatas = lstAnalogs.GroupBy(a => a.Folder).Select(o => new
                 {
-                    DoQueryAndPushFtp(lstParams[i]);
-                    Thread.Sleep(10);
-                });
+                    Folder = o.Key,
+                    AnalogTables = o.ToArray()
+                }).ToArray();
 
+                Stopwatch stopWatch = new Stopwatch();
+                stopWatch.Start();
+                if (PushingDatas != null && PushingDatas.Length > 0)
+                {
+                    var options = new ParallelOptions()
+                    {
+                        MaxDegreeOfParallelism = 6
+                    };
+                    Parallel.For(0, PushingDatas.Length, options, i =>
+                    {
+                        PushFtp(now, (PushingDatas[i]?.Folder, PushingDatas[i]?.AnalogTables));
+                        Thread.Sleep(10);
+                    });
+                }
+                stopWatch.Stop();
+                //MessageBox.Show($"Time Taken to Execute Parallel For Loop in miliseconds {stopWatch.ElapsedMilliseconds}");
             }
-            stopWatch.Stop();
-            MessageBox.Show($"Time Taken to Execute Parallel For Loop in miliseconds {stopWatch.ElapsedMilliseconds}");
-            
-            //MessageBox.Show($"Time Taken to Sequentially in miliseconds {stopWatch.ElapsedMilliseconds}");
+
             myTimer.Start();
         }
 
-        private static void DoQueryAndPushFtp(HisConfig config)
+        private static void PushFtp(DateTime datetime, (string Folder, AnalogTable[] AnalogTables) data)
         {
-            var lstHisRuntime = new List<AnalogTable>();
             int iPush = 0;
             bool success = true;
-            LastRead lastRead = getLastRead(config.TagName);
-            var parameters = new Dictionary<string, object>()
-            {
-                ["@TagName"] = config.TagName,
-                ["@Datetime"] = lastRead != null ? lastRead.LastReadTime : DateTime.Now.AddHours(-1).Date,//lastReadTime(lstParams[k].TagName),
-                ["@Interval"] = config.Interval
-            };
-
-            lstHisRuntime.AddRange(MainForm._repositoryRuntime.GetListFromParameters<AnalogTable>(sqlRuntime, 1, parameters));
-            //if(lstHis==null || lstHis.Count == 0)
-            //{
-            //    lstHis = MainForm._repositoryRuntime.GetListFromParameters<HisRuntime>(sqlRuntime, 1, parameters);
-            //}
-            //if (lstHis != null && lstHis.Count > 0)
-            //{
-            //Boolean bExists = false;
-            //DateTime currDate = DateTime.Now;
-            //DateTime lastDate = lastRead!=null ? lastRead.LastReadTime.AddMinutes(lstParams[k].Interval): DateTime.Now.AddHours(-1).Date;
-            //while (lastDate < currDate)
-            //{
-            //    bExists = false;                            
-            //    for (int j = 0; j < lstHis.Count; j++)
-            //    {
-            //        if(DateTime.Compare(lastDate, lstHis[j].DateTime) == 0)
-            //        {
-            //            bExists = true;
-            //            lstHisRuntime.Add(lstHis[j]);
-            //            lstHis.Remove(lstHis[j]);
-            //            break;
-            //        }
-            //    }
-            //    if (!bExists)
-            //    {
-            //        HisRuntime hisRuntime = getLastRuntime(lstParams[k].TagName, lastRead != null ? lastRead.LastReadTime : DateTime.Now.AddHours(-1).Date, lastDate);
-            //        if (hisRuntime != null)
-            //            lstHisRuntime.Add(hisRuntime);
-            //    }
-            //    lastDate = lastDate.AddMinutes(lstParams[k].Interval);
-            //}                        
-            //    //lstHisRuntime.AddRange(lstHis);
-            //}
-
-            if (lstHisRuntime != null && lstHisRuntime.Count > 0)
+            if (data.AnalogTables != null && data.AnalogTables.Length > 0)
             {
                 var sb = new StringBuilder();
 
                 string folderPath = _localFolder;//AppDomain.CurrentDomain.BaseDirectory;
-                string fileName = DateTime.Now.ToString("HHmmssddMMyyyy") + "_" + Guid.NewGuid().ToString().Substring(0, 8) + ".txt";
+                string fileName = datetime.ToString("HHmmssddMMyyyy") + "_" + Guid.NewGuid().ToString().Substring(0, 8) + ".txt";
                 sb = new StringBuilder();
                 sb.AppendLine("Tagname,TimeStamp,Value");
-                for (int i =0; i < lstHisRuntime.Count; i++)
+                for (int i =0; i < data.AnalogTables.Length; i++)
                 {
-                    sb.AppendLine(lstHisRuntime[i].TagName + "," + lstHisRuntime[i].DateTime.ToString("yyyy-MM-dd HH:mm:ss.ffff") + "," + lstHisRuntime[i].LastValue.ToString());
+                    string dtString = data.AnalogTables[i].LogDate.Replace("/", "-") + " " + data.AnalogTables[i].LogTime;
+                    sb.AppendLine(data.AnalogTables[i].TagName + "," + dtString + "," + data.AnalogTables[i].LastValue.ToString());
                 }
                 string originalContent = sb.ToString();
                 var fullFileName = Path.Combine(folderPath, fileName);
-
                 // Ghi ra file
                 File.WriteAllText(System.IO.Path.Combine(folderPath, fileName), originalContent);
-
-                for (int i = 0; i < lstHisRuntime.Count; i++)
-                {
-                    updateLastReadTime(lstHisRuntime[i]);
-                }
 
             //Day file
             Label_Push:
@@ -463,8 +414,8 @@ namespace FTP
                     client.Credentials = new NetworkCredential(_userName, _password);
                     try
                     {
-                        CreateFTPDirectory(_ftpLink + config.TagName, _userName, _password);
-                        client.UploadFile(_ftpLink + config.TagName + "//" + fileName, WebRequestMethods.Ftp.UploadFile, fullFileName);
+                        CreateFTPDirectory(_ftpLink + "/" + data.Folder, datetime.ToString("yyyyMMdd"), _userName, _password);
+                        client.UploadFile(_ftpLink + data.Folder + "//" + datetime.ToString("yyyyMMdd") + "//" + fileName, WebRequestMethods.Ftp.UploadFile, fullFileName);
                     }
                     catch (WebException wEx)
                     {
@@ -522,9 +473,8 @@ namespace FTP
             }
         }
 
-        static bool CreateFTPDirectory(string directory, string _username, string _password)
+        static bool CreateFTPDirectory(string directory, string subFolder, string _username, string _password)
         {
-
             try
             {
                 //create the directory
@@ -539,7 +489,21 @@ namespace FTP
 
                 ftpStream.Close();
                 response.Close();
-
+                ///////////////////////////////////////////
+                if (!string.IsNullOrEmpty(subFolder))
+                {
+                    FtpWebRequest requestSub = (FtpWebRequest)FtpWebRequest.Create(new Uri(directory + "//" + subFolder));
+                    requestSub.Method = WebRequestMethods.Ftp.MakeDirectory;
+                    requestSub.Credentials = new NetworkCredential(_username, _password);
+                    requestSub.UsePassive = true;
+                    requestSub.UseBinary = true;
+                    requestSub.KeepAlive = false;
+                    FtpWebResponse response2 = (FtpWebResponse)requestSub.GetResponse();
+                    Stream ftpStream2 = response.GetResponseStream();
+                    ftpStream2.Close();
+                    response2.Close();
+                }
+                
                 return true;
             }
             catch (WebException ex)
