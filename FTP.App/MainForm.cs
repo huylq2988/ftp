@@ -16,6 +16,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
 using System.Windows.Forms;
+using System.CodeDom;
 
 namespace FTP
 {
@@ -210,10 +211,16 @@ namespace FTP
         public static string _userName = string.Empty;
         public static string _password = string.Empty;
         public static string _localFolder = string.Empty;
-        public static string sqlRuntime = @"select DateTime,TagName,Value
-                    from History                    
-                    where TagName =@TagName and DateTime>@Datetime and DATEPART(MI,DateTime)%@Interval=0
-                    order by DateTime";
+        //public static string sqlRuntime = @"select DateTime,TagName,Value
+        //            from History                    
+        //            where TagName =@TagName and DateTime>@Datetime and DATEPART(MI,DateTime)%@Interval=0
+        //            order by DateTime";
+
+        public static string sqlRuntime = @"select p.Folder, l.LogDate, l.LogTime, l.TagName, l.LastValue from BwAnalogTable l
+					INNER JOIN Params p ON l.TagName = p.TagName
+					where p.Interval is not null and p.Enable=1 --and Folder = 'S1' 
+					and l.LogDate = CONVERT(VARCHAR, DATEADD(MI, -1, GETDATE()), 11) 
+					and l.LogTime = SUBSTRING(CONVERT(VARCHAR, DATEADD(MI, -1, GETDATE()), 20), 12, 5) + ':00'";
 
         public static void Run()
         {
@@ -381,7 +388,7 @@ namespace FTP
 
         private static void DoQueryAndPushFtp(HisConfig config)
         {
-            var lstHisRuntime = new List<HisRuntime>();
+            var lstHisRuntime = new List<AnalogTable>();
             int iPush = 0;
             bool success = true;
             LastRead lastRead = getLastRead(config.TagName);
@@ -392,7 +399,7 @@ namespace FTP
                 ["@Interval"] = config.Interval
             };
 
-            lstHisRuntime.AddRange(MainForm._repositoryRuntime.GetListFromParameters<HisRuntime>(sqlRuntime, 1, parameters));
+            lstHisRuntime.AddRange(MainForm._repositoryRuntime.GetListFromParameters<AnalogTable>(sqlRuntime, 1, parameters));
             //if(lstHis==null || lstHis.Count == 0)
             //{
             //    lstHis = MainForm._repositoryRuntime.GetListFromParameters<HisRuntime>(sqlRuntime, 1, parameters);
@@ -429,114 +436,83 @@ namespace FTP
             if (lstHisRuntime != null && lstHisRuntime.Count > 0)
             {
                 var sb = new StringBuilder();
-                int rowPerPage = 500;
-                int pageNum = (lstHisRuntime.Count % rowPerPage) > 0 ? (lstHisRuntime.Count / rowPerPage) + 1 : (lstHisRuntime.Count / rowPerPage);
-                for (int page = 1; page <= pageNum; page++)
+
+                string folderPath = _localFolder;//AppDomain.CurrentDomain.BaseDirectory;
+                string fileName = DateTime.Now.ToString("HHmmssddMMyyyy") + "_" + Guid.NewGuid().ToString().Substring(0, 8) + ".txt";
+                sb = new StringBuilder();
+                sb.AppendLine("Tagname,TimeStamp,Value");
+                for (int i =0; i < lstHisRuntime.Count; i++)
                 {
-                    string folderPath = _localFolder;//AppDomain.CurrentDomain.BaseDirectory;
-                    string fileName = DateTime.Now.ToString("HHmmssddMMyyyy") + "_" + Guid.NewGuid().ToString().Substring(0, 8) + ".txt";
-                    sb = new StringBuilder();
-                    sb.AppendLine("Tagname,TimeStamp,Value");
-                    for (int i = (page - 1) * rowPerPage; i < lstHisRuntime.Count; i++)
+                    sb.AppendLine(lstHisRuntime[i].TagName + "," + lstHisRuntime[i].DateTime.ToString("yyyy-MM-dd HH:mm:ss.ffff") + "," + lstHisRuntime[i].LastValue.ToString());
+                }
+                string originalContent = sb.ToString();
+                var fullFileName = Path.Combine(folderPath, fileName);
+
+                // Ghi ra file
+                File.WriteAllText(System.IO.Path.Combine(folderPath, fileName), originalContent);
+
+                for (int i = 0; i < lstHisRuntime.Count; i++)
+                {
+                    updateLastReadTime(lstHisRuntime[i]);
+                }
+
+            //Day file
+            Label_Push:
+                using (var client = new WebClient())
+                {
+                    client.Credentials = new NetworkCredential(_userName, _password);
+                    try
                     {
-                        if (i > (page * rowPerPage - 1))
-                            break;
-                        //if (i % rowPerPage == 0)
-                        //    sb.AppendLine(lstHisRuntime[i].TagName + "," + lstHisRuntime[i].DateTime.ToString("yyyy-MM-dd HH:mm:ss.ffff") + "," + lstHisRuntime[i].Value.ToString());
-                        //else
-                        sb.AppendLine(lstHisRuntime[i].TagName + "," + lstHisRuntime[i].DateTime.ToString("yyyy-MM-dd HH:mm:ss.ffff") + "," + lstHisRuntime[i].Value.ToString());
+                        CreateFTPDirectory(_ftpLink + config.TagName, _userName, _password);
+                        client.UploadFile(_ftpLink + config.TagName + "//" + fileName, WebRequestMethods.Ftp.UploadFile, fullFileName);
                     }
-                    string originalContent = sb.ToString();
-
-                    //string folderPath = _localFolder;//AppDomain.CurrentDomain.BaseDirectory;
-                    //string fileName = DateTime.Now.ToString("HHmmssddMMyyyy") + "_" + Guid.NewGuid().ToString().Substring(0, 8) + ".txt";
-                    //sb = new StringBuilder();
-                    //sb.AppendLine("Tagname,TimeStamp,Value");
-                    //for (int i = 0; i < lstHisRuntime.Count; i++)
-                    //{
-                    //    //NOX,2018-06-13 11:05:00.000,95.900002
-                    //    if (i == lstHisRuntime.Count - 1)
-                    //        sb.Append(lstHisRuntime[i].TagName + "," + lstHisRuntime[i].DateTime.ToString("yyyy-MM-dd HH:mm:ss.ffff") + "," + lstHisRuntime[i].Value.ToString());
-                    //    else
-                    //        sb.AppendLine(lstHisRuntime[i].TagName + "," + lstHisRuntime[i].DateTime.ToString("yyyy-MM-dd HH:mm:ss.ffff") + "," + lstHisRuntime[i].Value.ToString());
-                    //}
-                    //string originalContent = sb.ToString();
-
-                    //Ma hoa du lieu
-                    //string encryptData = Helper.EncryptRSA(Helper.PassCode, originalContent);
-                    //string decryptData = new RSA().Decrypt(RSA.PassCode, encryptData);
-
-                    //var fullFileName = folderPath + fileName;
-                    var fullFileName = Path.Combine(folderPath, fileName);
-
-                    // Ghi ra file
-                    File.WriteAllText(System.IO.Path.Combine(folderPath, fileName), originalContent);
-
-                    for (int i = (page - 1) * rowPerPage; i < lstHisRuntime.Count; i++)
+                    catch (WebException wEx)
                     {
-                        if (i > (page * rowPerPage - 1))
-                            break;
-                        updateLastReadTime(lstHisRuntime[i]);
-                    }
-
-                //Day file
-                Label_Push:
-                    using (var client = new WebClient())
-                    {
-                        client.Credentials = new NetworkCredential(_userName, _password);
-                        try
-                        {
-                            CreateFTPDirectory(_ftpLink + config.TagName, _userName, _password);
-                            client.UploadFile(_ftpLink + config.TagName + "//" + fileName, WebRequestMethods.Ftp.UploadFile, fullFileName);
-                        }
-                        catch (WebException wEx)
-                        {
-                            iPush++;
-                            //MessageBox.Show(wEx.Message, "Push Error");
-                            if (iPush < 3)
-                                goto Label_Push;// Gui lai
-                            else
-                            {
-                                success = false;
-                                //Do Something
-                                //Move file to another Folder
-                                //fileInfo.MoveTo(FailedFolder + "\\" + fileInfo.Name);
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            iPush++;
-                            //MessageBox.Show(ex.Message, "Push Error");
-                            if (iPush < 3)
-                                goto Label_Push;// Gui lai
-                            else
-                            {
-                                success = false;
-                                //Do Something
-                                //Move file to another Folder
-                                //fileInfo.MoveTo(FailedFolder + "\\" + fileInfo.Name);
-                            }
-                        }
-
-                        if (File.Exists(fullFileName))
-                        {
-                            if (success)
-                            {
-                                LogPush((int)eStatusError.SuccessAll, fullFileName);
-                                try
-                                {
-                                    System.IO.File.Delete(fullFileName);
-                                }
-                                catch (Exception exc) { }
-                            }
-                            else
-                                LogPush((int)eStatusError.CreateFileSuccessSendFtpError, fullFileName);
-                        }
+                        iPush++;
+                        //MessageBox.Show(wEx.Message, "Push Error");
+                        if (iPush < 3)
+                            goto Label_Push;// Gui lai
                         else
                         {
-                            if (iPush >= 3)
-                                LogPush((int)eStatusError.ErrorAll, fullFileName);
+                            success = false;
+                            //Do Something
+                            //Move file to another Folder
+                            //fileInfo.MoveTo(FailedFolder + "\\" + fileInfo.Name);
                         }
+                    }
+                    catch (Exception ex)
+                    {
+                        iPush++;
+                        //MessageBox.Show(ex.Message, "Push Error");
+                        if (iPush < 3)
+                            goto Label_Push;// Gui lai
+                        else
+                        {
+                            success = false;
+                            //Do Something
+                            //Move file to another Folder
+                            //fileInfo.MoveTo(FailedFolder + "\\" + fileInfo.Name);
+                        }
+                    }
+
+                    if (File.Exists(fullFileName))
+                    {
+                        if (success)
+                        {
+                            LogPush((int)eStatusError.SuccessAll, fullFileName);
+                            try
+                            {
+                                System.IO.File.Delete(fullFileName);
+                            }
+                            catch (Exception exc) { }
+                        }
+                        else
+                            LogPush((int)eStatusError.CreateFileSuccessSendFtpError, fullFileName);
+                    }
+                    else
+                    {
+                        if (iPush >= 3)
+                            LogPush((int)eStatusError.ErrorAll, fullFileName);
                     }
                 }
             }
@@ -581,7 +557,7 @@ namespace FTP
                 }
             }
         }
-        static HisRuntime getLastRuntime(string tagName, DateTime fromDt, DateTime toDt)
+        static AnalogTable getLastRuntime(string tagName, DateTime fromDt, DateTime toDt)
         {
             var sqlRuntime = @"select DateTime,TagName,Value
                     from History                    
@@ -593,7 +569,7 @@ namespace FTP
                 ["@FromDt"] = fromDt,
                 ["@ToDt"] = toDt
             };
-            var lstHis = MainForm._repositoryRuntime.GetListFromParameters<HisRuntime>(sqlRuntime, 1, parameters);
+            var lstHis = MainForm._repositoryRuntime.GetListFromParameters<AnalogTable>(sqlRuntime, 1, parameters);
             if (lstHis != null && lstHis.Count > 0)
                 return lstHis[0];
             return null;
@@ -624,7 +600,7 @@ namespace FTP
                 return (DateTime)result;
         }
 
-        static void updateLastReadTime(HisRuntime his)
+        static void updateLastReadTime(AnalogTable his)
         {
             string sql = @"IF (NOT EXISTS (SELECT 1 FROM LastRead WHERE TagName = @TagName)) 
                         BEGIN 
@@ -634,10 +610,13 @@ namespace FTP
                         BEGIN 
                             UPDATE LastRead SET LastReadTime = @Datetime WHERE TagName=@TagName
                         END";
+
+            var strDt = "20" + his.LogDate + " " + his.LogTime;
+            var dt = Convert.ToDateTime(strDt);
             var parameters = new Dictionary<string, object>()
             {
                 ["@TagName"] = his.TagName,
-                ["@Datetime"] = his.DateTime
+                ["@Datetime"] = dt
             };
             var result = _repositoryMiddle.ExecuteSQLFromParameters(sql, 1, parameters);
         }

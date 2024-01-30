@@ -71,7 +71,7 @@ namespace FTP
 
                 if (lstParams != null && lstParams.Count > 0)
                 {
-                    var lstHisRuntime = new List<HisRuntime>();
+                    var lstHisRuntime = new List<AnalogTable>();
                     for (int k = 0; k < lstParams.Count; k++)
                     {
                         LastRead lastRead = getLastRead(lstParams[k].TagName);
@@ -82,7 +82,7 @@ namespace FTP
                             ["@Interval"] = lstParams[k].Interval
                         };
 
-                        var lstHis = MainForm._repositoryRuntime.GetListFromParameters<HisRuntime>(sqlRuntime, 1, parameters);
+                        var lstHis = MainForm._repositoryRuntime.GetListFromParameters<AnalogTable>(sqlRuntime, 1, parameters);
                         //if(lstHis==null || lstHis.Count == 0)
                         //{
                         //    lstHis = MainForm._repositoryRuntime.GetListFromParameters<HisRuntime>(sqlRuntime, 1, parameters);
@@ -107,7 +107,7 @@ namespace FTP
                                 }
                                 if (!bExists)
                                 {
-                                    HisRuntime hisRuntime = getLastRuntime(lstParams[k].TagName, lastRead.LastReadTime, lastDate);
+                                    AnalogTable hisRuntime = getLastRuntime(lstParams[k].TagName, lastRead.LastReadTime, lastDate);
                                     if (hisRuntime != null)
                                         lstHisRuntime.Add(hisRuntime);
                                 }
@@ -224,7 +224,7 @@ namespace FTP
             }
         }
 
-        private HisRuntime getLastRuntime(string tagName, DateTime fromDt, DateTime toDt)
+        private AnalogTable getLastRuntime(string tagName, DateTime fromDt, DateTime toDt)
         {
             var sqlRuntime = @"select DateTime,TagName,Value
                     from History                    
@@ -236,7 +236,7 @@ namespace FTP
                 ["@FromDt"] = fromDt,
                 ["@ToDt"] = toDt
             };
-            var lstHis = MainForm._repositoryRuntime.GetListFromParameters<HisRuntime>(sqlRuntime, 1, parameters);
+            var lstHis = MainForm._repositoryRuntime.GetListFromParameters<AnalogTable>(sqlRuntime, 1, parameters);
             if (lstHis != null && lstHis.Count > 0)
                 return lstHis[0];
             return null;
@@ -266,7 +266,7 @@ namespace FTP
             else
                 return (DateTime)result;
         }
-        private void updateLastReadTime(HisRuntime his)
+        private void updateLastReadTime(AnalogTable his)
         {
             string sql = @"IF (NOT EXISTS (SELECT 1 FROM LastRead WHERE TagName = @TagName)) 
                         BEGIN 
@@ -276,10 +276,13 @@ namespace FTP
                         BEGIN 
                             UPDATE LastRead SET LastReadTime = @Datetime WHERE TagName=@TagName
                         END";
+
+            var strDt = "20" + his.LogDate + " " + his.LogTime;
+            var dt = Convert.ToDateTime(strDt);
             var parameters = new Dictionary<string, object>()
             {
                 ["@TagName"] = his.TagName,
-                ["@Datetime"] = his.DateTime
+                ["@Datetime"] = strDt
             };
             var result = MainForm._repositoryMiddle.ExecuteSQLFromParameters(sql, 1, parameters);
         }
