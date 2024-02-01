@@ -17,4 +17,9 @@ namespace FTP.Model
         public string TagName { get; set; }
         public double LastValue { get; set; }
     }
+
+    public class LastQuery
+    {
+        public DateTime LogTime { get; set; }
+    }
 }

@@ -209,17 +209,11 @@ namespace FTP
         public static string _userName = string.Empty;
         public static string _password = string.Empty;
         public static string _localFolder = string.Empty;
-        //public static string sqlRuntime = @"select DateTime,TagName,Value
-        //            from History                    
-        //            where TagName =@TagName and DateTime>@Datetime and DATEPART(MI,DateTime)%@Interval=0
-        //            order by DateTime";
-
         public static string sqlRuntime = @"select p.Folder, l.LogDate, l.LogTime, l.TagName, l.LastValue from BwAnalogTable l
 					INNER JOIN Params p ON l.TagName = p.TagName
 					where p.Interval is not null and p.Enable = 1
-					and l.LogDate = CONVERT(VARCHAR, DATEADD(MI, -1, @datetime), 11) 
-					and l.LogTime = SUBSTRING(CONVERT(VARCHAR, DATEADD(MI, -1, @datetime), 20), 12, 5) + ':00'";
-
+					and l.LogDate = CONVERT(VARCHAR, DATEADD(MI, -3, @datetime), 11) 
+					and l.LogTime = SUBSTRING(CONVERT(VARCHAR, DATEADD(MI, -3, @datetime), 20), 12, 5) + ':00'";
         public static void Run()
         {
             MainForm._repositoryRuntime = new Repository(MainForm.connectionStringRuntime);
@@ -258,7 +252,6 @@ namespace FTP
             backGroundTimer.Elapsed += new ElapsedEventHandler(BackGroundJob);
             backGroundTimer.Start();
         }
-
         private static void BackGroundJob(object sender, ElapsedEventArgs e)
         {
             System.Timers.Timer backGroundTimer = (System.Timers.Timer)sender;
@@ -332,7 +325,6 @@ namespace FTP
 
             backGroundTimer.Start();
         }
-
         public static void ProcessPull()
         {
             MainForm.myTimer.Elapsed += new ElapsedEventHandler(PullData);
@@ -351,38 +343,69 @@ namespace FTP
             myTimer.Stop();
 
             var now = DateTime.Now;
-            if (now.Minute % 5 == 1)
+            var dtMinute = new DateTime(now.Year, now.Month, now.Day, now.Hour, now.Minute, 0, DateTimeKind.Local);
+            if (now.Minute % 5 == 3)
             {
-                var parameters = new Dictionary<string, object>()
+                DateTime? lastQuery = GetLastQuery();
+                if (lastQuery == null || dtMinute > lastQuery)
                 {
-                    ["@datetime"] = now,
-                };
-                var lstAnalogs = MainForm._repositoryRuntime.GetListFromParameters<AnalogTable>(sqlRuntime, 1, parameters);
-                var PushingDatas = lstAnalogs.GroupBy(a => a.Folder).Select(o => new
-                {
-                    Folder = o.Key,
-                    AnalogTables = o.ToArray()
-                }).ToArray();
-
-                Stopwatch stopWatch = new Stopwatch();
-                stopWatch.Start();
-                if (PushingDatas != null && PushingDatas.Length > 0)
-                {
-                    var options = new ParallelOptions()
+                    var parameters = new Dictionary<string, object>()
                     {
-                        MaxDegreeOfParallelism = 6
+                        ["@datetime"] = now,
                     };
-                    Parallel.For(0, PushingDatas.Length, options, i =>
+                    var lstAnalogs = MainForm._repositoryRuntime.GetListFromParameters<AnalogTable>(sqlRuntime, 1, parameters);
+                    var PushingDatas = lstAnalogs.GroupBy(a => a.Folder).Select(o => new
                     {
-                        PushFtp(now, (PushingDatas[i]?.Folder, PushingDatas[i]?.AnalogTables));
-                        Thread.Sleep(10);
-                    });
+                        Folder = o.Key,
+                        AnalogTables = o.ToArray()
+                    }).ToArray();
+
+                    Stopwatch stopWatch = new Stopwatch();
+                    stopWatch.Start();
+                    if (PushingDatas != null && PushingDatas.Length > 0)
+                    {
+                        var options = new ParallelOptions()
+                        {
+                            MaxDegreeOfParallelism = 6
+                        };
+                        Parallel.For(0, PushingDatas.Length, options, i =>
+                        {
+                            PushFtp(now, (PushingDatas[i]?.Folder, PushingDatas[i]?.AnalogTables));
+                            Thread.Sleep(10);
+                        });
+                        UpsertLastQuery(dtMinute);
+                    }
+                    stopWatch.Stop();
+                    //MessageBox.Show($"Time Taken to Execute Parallel For Loop in miliseconds {stopWatch.ElapsedMilliseconds}");
                 }
-                stopWatch.Stop();
-                //MessageBox.Show($"Time Taken to Execute Parallel For Loop in miliseconds {stopWatch.ElapsedMilliseconds}");
             }
 
             myTimer.Start();
+        }
+
+        private static DateTime? GetLastQuery()
+        {
+            string sql = @"select top 1 LogTime from LastQuery";
+            var result = _repositoryMiddle.GetObject<LastQuery>(sql, 1, null);
+            return result?.LogTime;
+        }
+
+        static void UpsertLastQuery(DateTime now)
+        {
+            string sql = @"IF (NOT EXISTS (SELECT 1 FROM LastQuery)) 
+                    BEGIN 
+                        INSERT INTO LastQuery (LogTime) values (@logtime) 
+                    END 
+                    ELSE 
+                    BEGIN 
+                        UPDATE LastQuery SET LogTime = @logtime
+                    END";
+
+            var parameters = new Dictionary<string, object>()
+            {
+                ["@logtime"] = now,
+            };
+            var result = _repositoryMiddle.ExecuteSQLFromParameters(sql, 1, parameters);
         }
 
         private static void PushFtp(DateTime datetime, (string Folder, AnalogTable[] AnalogTables) data)
@@ -472,7 +495,6 @@ namespace FTP
                 //LogPush((int)eStatusError.NoData, "");
             }
         }
-
         static bool CreateFTPDirectory(string directory, string subFolder, string _username, string _password)
         {
             try
@@ -520,69 +542,6 @@ namespace FTP
                     return false;
                 }
             }
-        }
-        static AnalogTable getLastRuntime(string tagName, DateTime fromDt, DateTime toDt)
-        {
-            var sqlRuntime = @"select DateTime,TagName,Value
-                    from History                    
-                    where TagName =@TagName and DateTime>=@FromDt and DateTime<@toDt
-                    order by DateTime desc";
-            var parameters = new Dictionary<string, object>()
-            {
-                ["@TagName"] = tagName,
-                ["@FromDt"] = fromDt,
-                ["@ToDt"] = toDt
-            };
-            var lstHis = MainForm._repositoryRuntime.GetListFromParameters<AnalogTable>(sqlRuntime, 1, parameters);
-            if (lstHis != null && lstHis.Count > 0)
-                return lstHis[0];
-            return null;
-        }
-
-        static LastRead getLastRead(String tagName)
-        {
-            string sql = @"select top 1 LastReadTime from LastRead where TagName=@TagName";
-            var parameters = new Dictionary<string, object>()
-            {
-                ["@TagName"] = tagName
-            };
-            var result = _repositoryMiddle.GetObject<LastRead>(sql, 1, parameters);
-            return result;
-        }
-
-        static DateTime lastReadTime(String tagName)
-        {
-            string sql = @"select top 1 LastReadTime from LastRead where TagName=@TagName";
-            var parameters = new Dictionary<string, object>()
-            {
-                ["@TagName"] = tagName
-            };
-            var result = _repositoryMiddle.GetObject(sql, 1, parameters);
-            if (result == null)
-                return DateTime.Now.AddHours(-1).Date;
-            else
-                return (DateTime)result;
-        }
-
-        static void updateLastReadTime(AnalogTable his)
-        {
-            string sql = @"IF (NOT EXISTS (SELECT 1 FROM LastRead WHERE TagName = @TagName)) 
-                        BEGIN 
-                            INSERT INTO LastRead (TagName,LastReadTime) values (@TagName,@Datetime) 
-                        END 
-                        ELSE 
-                        BEGIN 
-                            UPDATE LastRead SET LastReadTime = @Datetime WHERE TagName=@TagName
-                        END";
-
-            var strDt = "20" + his.LogDate + " " + his.LogTime;
-            var dt = Convert.ToDateTime(strDt);
-            var parameters = new Dictionary<string, object>()
-            {
-                ["@TagName"] = his.TagName,
-                ["@Datetime"] = dt
-            };
-            var result = _repositoryMiddle.ExecuteSQLFromParameters(sql, 1, parameters);
         }
         public static void LogPush(int statusError, string fileName, bool background = false)
         {
@@ -643,7 +602,6 @@ namespace FTP
                     break;
             }
         }
-
         static void PullData(object sender, ElapsedEventArgs e)
         {
             System.Timers.Timer myTimer = (System.Timers.Timer)sender;
@@ -671,7 +629,6 @@ namespace FTP
 
             myTimer.Start();
         }
-
         static string[] GetFileList()
         {
             string[] downloadFiles;
@@ -715,7 +672,6 @@ namespace FTP
                 return downloadFiles;
             }
         }
-
         static void Download(string file)
         {
             bool downSuccess = true;
@@ -923,8 +879,6 @@ namespace FTP
             }
             return null;
         }
-
-
 
         delegate void SetTextLog(string text);
 
