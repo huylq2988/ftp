@@ -18,6 +18,10 @@ using System.Timers;
 using System.Windows.Forms;
 using System.CodeDom;
 using static FTP.MainForm;
+using System.Net.Http.Headers;
+using System.Net.Http;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace FTP
 {
@@ -636,7 +640,65 @@ namespace FTP
 
             myTimer.Start();
         }
+        private static async void CallApiToSaveDB(string content)
+        {
+            var arrHis = content.Split('\n');
+            if (arrHis != null && arrHis.Length > 1)
+            {
+                // Bo qua dong tieu de
+                SaveData saveData = new SaveData();
+                saveData.lstDataSave = new List<DataRaw>();
+                for (int i = 1; i < arrHis.Length; i++)
+                {
+                    string hisContent = arrHis[i];
+                    var his = hisContent.Split(',');
+                    if (his.Length >= 3)
+                    {
+                        DataRaw data = new DataRaw() { maThongSoNhap = his[0], thoiDiem = his[1], giaTri = his[2] };
+                        saveData.lstDataSave.Add(data);
+                    }
+                }
+                string token = string.Empty;
+                string json = await Login(System.Configuration.ConfigurationManager.AppSettings["PushDataUrl"], "admin", "admin<<<<!@@//@@!>>>>123");
+                var objectData = JsonSerializer.Deserialize<JsonObject>(json);
+                if (objectData?["status"] != null && objectData["status"]?.ToString() == "1")
+                {
+                    token = objectData["token"]?.ToString();
+                }
+                if (!string.IsNullOrEmpty(token))
+                    await PushDataApi(token, saveData);
+            }
+        }
 
+        private static async Task PushDataApi(string token, SaveData saveData)
+        {
+            using (var httpClient = new HttpClient())
+            {
+                httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                string url = System.Configuration.ConfigurationManager.AppSettings["PushDataUrl"];
+                var jsonData = System.Text.Json.JsonSerializer.Serialize(saveData);
+                var content = new StringContent(jsonData, Encoding.UTF8, "application/json");
+                var response = await httpClient.PostAsync(url, content);
+                var rerult = response.Content.ReadAsStringAsync().Result;
+                var objectResult = System.Text.Json.JsonSerializer.Deserialize<JsonObject>(rerult);
+                if (objectResult?["status"] != null && objectResult["status"]?.ToString() == "1")
+                {
+                    //ThanhCong;
+                }
+            }
+        }
+
+        private static async Task<string> Login(string url, string username, string password)
+        {
+            using (var httpClient = new HttpClient())
+            {
+                var json = System.Text.Json.JsonSerializer.Serialize(new { userId = username, password = password });
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                var response = await httpClient.PostAsync(url, content);
+                var rerult = response.Content.ReadAsStringAsync().Result;
+                return rerult;
+            }
+        }
         static (string folder, string timeFolder, string[] lstFiles)[] GetFolderAndFileList(string nowFolder)
         {
             (string, string, string[])[] FolderAndFiles;
@@ -801,7 +863,7 @@ namespace FTP
                 {
                     content = sr.ReadToEnd();
                 }
-
+                 CallApiToSaveDB(content);
 
 
                 //string decryptData = Helper.DecryptRSA(Helper.PassCode, content.Replace("\0", string.Empty));

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 
 namespace FTP.Model
 {
@@ -21,5 +22,15 @@ namespace FTP.Model
     public class LastQuery
     {
         public DateTime LogTime { get; set; }
+    }
+    public class SaveData
+    {
+        public List<DataRaw> lstDataSave { get; set; }
+    }
+    public class DataRaw
+    {
+        public string maThongSoNhap { get; set; }
+        public string thoiDiem { get; set; }
+        public string giaTri { get; set; }
     }
 }

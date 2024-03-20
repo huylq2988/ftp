@@ -36,9 +36,6 @@ D:\huylq\projects\Gui Huy 20231101_Edited\ftp_HuyLQ_20201025\ftp\FTP.TestEncrypt
 D:\huylq\projects\ftp\FTP.TestEncrypt\bin\Debug\FTP.TestEncrypt.exe.config
 D:\huylq\projects\ftp\FTP.TestEncrypt\bin\Debug\FTP.TestEncrypt.exe
 D:\huylq\projects\ftp\FTP.TestEncrypt\bin\Debug\FTP.TestEncrypt.pdb
-D:\huylq\projects\ftp\FTP.TestEncrypt\bin\Debug\Newtonsoft.Json.dll
-D:\huylq\projects\ftp\FTP.TestEncrypt\bin\Debug\FTP.Common.pdb
-D:\huylq\projects\ftp\FTP.TestEncrypt\bin\Debug\Newtonsoft.Json.xml
 D:\huylq\projects\ftp\FTP.TestEncrypt\obj\Debug\FTP.TestEncrypt.csproj.AssemblyReference.cache
 D:\huylq\projects\ftp\FTP.TestEncrypt\obj\Debug\FTP.TestEncrypt.csproj.CoreCompileInputs.cache
 D:\huylq\projects\ftp\FTP.TestEncrypt\obj\Debug\FTP.TestEncrypt.csproj.CopyComplete
