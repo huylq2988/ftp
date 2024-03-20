@@ -342,8 +342,14 @@ namespace FTP
 					where p.Interval is not null and p.Enable = 1
 					and l.LogDate = CONVERT(VARCHAR, DATEADD(MI, -1, @datetime), 11) 
 					and l.LogTime = SUBSTRING(CONVERT(VARCHAR, DATEADD(MI, -1, @datetime), 20), 12, 5) + ':00'";
+
+        public static string sqlRuntime5 = sqlRuntime + " and p.Interval = 5 ";
+        public static string sqlRuntime10 = sqlRuntime + " and (p.Interval = 5 OR p.Interval = 10) ";
+        public static string sqlRuntime15 = sqlRuntime + " and (p.Interval = 5 OR p.Interval = 15) ";
+        public static string sqlRuntime30 = sqlRuntime + " and (p.Interval = 5 OR p.Interval = 10 OR p.Interval = 15 OR p.Interval = 30) ";
         static void PushData(object sender, ElapsedEventArgs e)
         {
+            string sql = sqlRuntime5;
             System.Timers.Timer myTimer = (System.Timers.Timer)sender;
             myTimer.Stop();
 
@@ -351,6 +357,13 @@ namespace FTP
             var dtMinute = new DateTime(now.Year, now.Month, now.Day, now.Hour, now.Minute, 0, DateTimeKind.Local);
             if (now.Minute % 5 == 1)
             {
+                if (now.Minute % 10 == 1)
+                    sql = sqlRuntime10;
+                if (now.Minute % 15 == 1)
+                    sql = sqlRuntime15;
+                if (now.Minute % 30 == 1)
+                    sql = sqlRuntime30;
+
                 DateTime? lastQuery = GetLastQuery();
                 if (lastQuery == null || dtMinute > lastQuery)
                 {
@@ -358,7 +371,7 @@ namespace FTP
                     {
                         ["@datetime"] = now,
                     };
-                    var lstAnalogs = MainForm._repositoryRuntime.GetListFromParameters<AnalogTable>(sqlRuntime, 1, parameters);
+                    var lstAnalogs = MainForm._repositoryRuntime.GetListFromParameters<AnalogTable>(sql, 1, parameters);
                     var PushingDatas = lstAnalogs.GroupBy(a => a.Folder).Select(o => new
                     {
                         Folder = o.Key,
