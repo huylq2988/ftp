@@ -4,14 +4,17 @@ using FTP.Model;
 using System;
 using System.Collections.Generic;
 using System.Configuration;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Security;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
 using System.Windows.Forms;
+using static FTP.MainForm;
 
 namespace FTP
 {
@@ -21,12 +24,7 @@ namespace FTP
         {
             InitializeComponent();
         }
-        //public static Repository _repositoryMiddle;
-        //private string connectionStringMiddle = ConfigurationManager.ConnectionStrings["Middle"].ConnectionString;
-        //private string _ftpLink = string.Empty;
-        //private string _userName = string.Empty;
-        //private string _password = string.Empty;
-        //private string _localFolder = string.Empty;
+        public static string sqlRuntime = @"sp_GetBwAnalogTable";
 
 
         private void ManualUpload_Load(object sender, EventArgs e)
@@ -50,12 +48,27 @@ namespace FTP
             {
                 MessageBox.Show("Chưa nhập dữ liệu Đến ngày!");
             }
+            else if (dtTuNgay.Value >= dtDenNgay.Value)
+            {
+                MessageBox.Show("Từ ngày không được lớn hơn hoặc bằng đến ngày!");
+            }
+            else if ((dtDenNgay.Value - dtTuNgay.Value).Hours > 6)
+            {
+                MessageBox.Show("Không được lọc khoảng thời gian quá dài (> 6 giờ)!");
+            }
             else
             {
                 var tuNgay = dtTuNgay.Value;
                 var denNgay = dtDenNgay.Value;
                 // Lấy dữ liệu theo điều kiện lọc này
+                var time = tuNgay;
+                while (time <= denNgay) 
+                {
+                    PushDataManual(time);
+                    time = time.AddMinutes(5);
+                }
 
+                /* oldCode
                 int iPush = 0;
                 bool success = true;
                 //Select Data
@@ -97,13 +110,13 @@ namespace FTP
                                 bExists = false;
                                 for (int j = 0; j < lstHis.Count; j++)
                                 {
-                                    if (DateTime.Compare(lastDate, lstHis[j].DateTime) == 0)
-                                    {
-                                        bExists = true;
-                                        lstHisRuntime.Add(lstHis[j]);
-                                        lstHis.Remove(lstHis[j]);
-                                        break;
-                                    }
+                                    //if (DateTime.Compare(lastDate, lstHis[j].DateTime) == 0)
+                                    //{
+                                    //    bExists = true;
+                                    //    lstHisRuntime.Add(lstHis[j]);
+                                    //    lstHis.Remove(lstHis[j]);
+                                    //    break;
+                                    //}
                                 }
                                 if (!bExists)
                                 {
@@ -135,7 +148,6 @@ namespace FTP
                                 //if (i % rowPerPage == 0)
                                 //    sb.AppendLine(lstHisRuntime[i].TagName + "," + lstHisRuntime[i].DateTime.ToString("yyyy-MM-dd HH:mm:ss.ffff") + "," + lstHisRuntime[i].Value.ToString());
                                 //else
-                                sb.AppendLine(lstHisRuntime[i].TagName + "," + lstHisRuntime[i].DateTime.ToString("yyyy-MM-dd HH:mm:ss.ffff") + "," + lstHisRuntime[i].Value.ToString());
                             }
                             string originalContent = sb.ToString();
 
@@ -220,10 +232,177 @@ namespace FTP
                     {
                     }
                 }
-
+                */
             }
         }
 
+        private void PushDataManual(DateTime datetime)
+        {
+            var dtMinute = new DateTime(datetime.Year, datetime.Month, datetime.Day, datetime.Hour, datetime.Minute, 0, DateTimeKind.Local);
+            var parameters = new Dictionary<string, object>()
+            {
+                ["@datetime"] = dtMinute,
+            };
+            //var lstAnalogs = MainForm._repositoryRuntime.GetListFromParameters<AnalogTable>(sqlRuntime, 1, parameters);
+            var lstAnalogs = MainForm._repositoryRuntime.GetListFromParameters<AnalogTable>(sqlRuntime, 4, parameters);
+            var PushingDatas = lstAnalogs.GroupBy(a => a.Folder).Select(o => new
+            {
+                Folder = o.Key,
+                AnalogTables = o.ToArray()
+            }).ToArray();
+
+            if (PushingDatas != null && PushingDatas.Length > 0)
+            {
+                var options = new ParallelOptions()
+                {
+                    MaxDegreeOfParallelism = PushingDatas.Length
+                };
+                Parallel.For(0, PushingDatas.Length, options, i =>
+                {
+                    PushFtp(dtMinute, (PushingDatas[i]?.Folder, PushingDatas[i]?.AnalogTables));
+                    Thread.Sleep(10);
+                });
+            }
+        }
+
+        private static void PushFtp(DateTime datetime, (string Folder, AnalogTable[] AnalogTables) data)
+        {
+            int iPush = 0;
+            bool success = true;
+            if (data.AnalogTables != null && data.AnalogTables.Length > 0)
+            {
+                var sb = new StringBuilder();
+
+                string folderPath = _localFolder;//AppDomain.CurrentDomain.BaseDirectory;
+                string fileName = datetime.ToString("HHmmssddMMyyyy") + "_" + Guid.NewGuid().ToString().Substring(0, 8) + ".txt";
+                sb = new StringBuilder();
+                sb.AppendLine("Tagname,TimeStamp,Value");
+                for (int i = 0; i < data.AnalogTables.Length; i++)
+                {
+                    string dtString = data.AnalogTables[i].LogDate.Replace("/", "-") + " " + data.AnalogTables[i].LogTime;
+                    sb.AppendLine(data.AnalogTables[i].TagName + "," + dtString + "," + data.AnalogTables[i].LastValue.ToString());
+                }
+                string originalContent = sb.ToString();
+                var fullFileName = Path.Combine(folderPath, fileName);
+                // Ghi ra file
+                File.WriteAllText(System.IO.Path.Combine(folderPath, fileName), originalContent);
+
+            //Day file
+            Label_Push:
+                using (var client = new WebClient())
+                {
+                    client.Credentials = new NetworkCredential(_userName, _password);
+                    try
+                    {
+                        CreateFTPDirectory(_ftpLink + "/" + data.Folder, datetime.ToString("yyyyMMdd"), _userName, _password);
+                        client.UploadFile(_ftpLink + data.Folder + "//" + datetime.ToString("yyyyMMdd") + "//" + fileName, WebRequestMethods.Ftp.UploadFile, fullFileName);
+                    }
+                    catch (WebException wEx)
+                    {
+                        iPush++;
+                        //MessageBox.Show(wEx.Message, "Push Error");
+                        if (iPush < 3)
+                            goto Label_Push;// Gui lai
+                        else
+                        {
+                            success = false;
+                            //Do Something
+                            //Move file to another Folder
+                            //fileInfo.MoveTo(FailedFolder + "\\" + fileInfo.Name);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        iPush++;
+                        //MessageBox.Show(ex.Message, "Push Error");
+                        if (iPush < 3)
+                            goto Label_Push;// Gui lai
+                        else
+                        {
+                            success = false;
+                            //Do Something
+                            //Move file to another Folder
+                            //fileInfo.MoveTo(FailedFolder + "\\" + fileInfo.Name);
+                        }
+                    }
+
+                    if (File.Exists(fullFileName))
+                    {
+                        if (success)
+                        {
+                            LogPush((int)eStatusError.SuccessAll, fullFileName);
+                            try
+                            {
+                                System.IO.File.Delete(fullFileName);
+                            }
+                            catch (Exception exc) { }
+                        }
+                        else
+                            LogPush((int)eStatusError.CreateFileSuccessSendFtpError, fullFileName);
+                    }
+                    else
+                    {
+                        if (iPush >= 3)
+                            LogPush((int)eStatusError.ErrorAll, fullFileName);
+                    }
+                }
+            }
+            else
+            {
+            }
+        }
+
+        static bool CreateFTPDirectory(string directory, string subFolder, string _username, string _password)
+        {
+            try
+            {
+                //create the directory
+                FtpWebRequest requestDir = (FtpWebRequest)FtpWebRequest.Create(new Uri(directory));
+                requestDir.Method = WebRequestMethods.Ftp.MakeDirectory;
+                requestDir.Credentials = new NetworkCredential(_username, _password);
+                requestDir.UsePassive = true;
+                requestDir.UseBinary = true;
+                requestDir.KeepAlive = false;
+                FtpWebResponse response = (FtpWebResponse)requestDir.GetResponse();
+                Stream ftpStream = response.GetResponseStream();
+
+                ftpStream.Close();
+                response.Close();
+                ///////////////////////////////////////////
+                if (!string.IsNullOrEmpty(subFolder))
+                {
+                    FtpWebRequest requestSub = (FtpWebRequest)FtpWebRequest.Create(new Uri(directory + "//" + subFolder));
+                    requestSub.Method = WebRequestMethods.Ftp.MakeDirectory;
+                    requestSub.Credentials = new NetworkCredential(_username, _password);
+                    requestSub.UsePassive = true;
+                    requestSub.UseBinary = true;
+                    requestSub.KeepAlive = false;
+                    FtpWebResponse response2 = (FtpWebResponse)requestSub.GetResponse();
+                    Stream ftpStream2 = response.GetResponseStream();
+                    ftpStream2.Close();
+                    response2.Close();
+                }
+
+                return true;
+            }
+            catch (WebException ex)
+            {
+                FtpWebResponse response = (FtpWebResponse)ex.Response;
+                if (response.StatusCode == FtpStatusCode.ActionNotTakenFileUnavailable)
+                {
+                    response.Close();
+                    return true;
+                }
+                else
+                {
+                    response.Close();
+                    return false;
+                }
+            }
+        }
+
+
+        /* OldCode
         private AnalogTable getLastRuntime(string tagName, DateTime fromDt, DateTime toDt)
         {
             var sqlRuntime = @"select DateTime,TagName,Value
@@ -286,5 +465,6 @@ namespace FTP
             };
             var result = MainForm._repositoryMiddle.ExecuteSQLFromParameters(sql, 1, parameters);
         }
+        */
     }
 }

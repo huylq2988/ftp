@@ -171,6 +171,12 @@
     <Compile Include="Forms\HisInfo.Designer.cs">
       <DependentUpon>HisInfo.cs</DependentUpon>
     </Compile>
+    <Compile Include="Forms\ManualUpload.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Forms\ManualUpload.Designer.cs">
+      <DependentUpon>ManualUpload.cs</DependentUpon>
+    </Compile>
     <Compile Include="Forms\UserManager.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -249,6 +255,9 @@
     </EmbeddedResource>
     <EmbeddedResource Include="Forms\HisInfo.resx">
       <DependentUpon>HisInfo.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Forms\ManualUpload.resx">
+      <DependentUpon>ManualUpload.cs</DependentUpon>
     </EmbeddedResource>
     <EmbeddedResource Include="Forms\UserManager.resx">
       <DependentUpon>UserManager.cs</DependentUpon>

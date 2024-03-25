@@ -82,9 +82,9 @@ namespace FTP
             {
                 return;
             }
-            //ManualUpload form = new ManualUpload();
-            //form.Dock = DockStyle.Fill;
-            //form.ShowDialog();
+            ManualUpload form = new ManualUpload();
+            form.Dock = DockStyle.Fill;
+            form.ShowDialog();
         }
 
         private void DisableControls()

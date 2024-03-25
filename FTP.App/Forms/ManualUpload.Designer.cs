@@ -41,11 +41,11 @@ namespace FTP
             // 
             // dtTuNgay
             // 
-            this.dtTuNgay.CustomFormat = "dd-MM-yyyy";
-            this.dtTuNgay.Format = System.Windows.Forms.DateTimePickerFormat.Short;
+            this.dtTuNgay.CustomFormat = "dd-MM-yyyy HH:mm";
+            this.dtTuNgay.Format = System.Windows.Forms.DateTimePickerFormat.Custom;
             this.dtTuNgay.Location = new System.Drawing.Point(73, 28);
             this.dtTuNgay.Name = "dtTuNgay";
-            this.dtTuNgay.Size = new System.Drawing.Size(115, 20);
+            this.dtTuNgay.Size = new System.Drawing.Size(123, 20);
             this.dtTuNgay.TabIndex = 0;
             // 
             // lblTuNgay
@@ -68,11 +68,11 @@ namespace FTP
             // 
             // dtDenNgay
             // 
-            this.dtDenNgay.CustomFormat = "dd-MM-yyyy";
-            this.dtDenNgay.Format = System.Windows.Forms.DateTimePickerFormat.Short;
+            this.dtDenNgay.CustomFormat = "dd-MM-yyyy HH:mm";
+            this.dtDenNgay.Format = System.Windows.Forms.DateTimePickerFormat.Custom;
             this.dtDenNgay.Location = new System.Drawing.Point(319, 28);
             this.dtDenNgay.Name = "dtDenNgay";
-            this.dtDenNgay.Size = new System.Drawing.Size(115, 20);
+            this.dtDenNgay.Size = new System.Drawing.Size(139, 20);
             this.dtDenNgay.TabIndex = 0;
             // 
             // btnDocDuLieuLs
