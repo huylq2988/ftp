@@ -136,54 +136,58 @@ namespace FTP
             // miHisConfiguration
             // 
             this.miHisConfiguration.Index = 0;
-            this.miHisConfiguration.Shortcut = System.Windows.Forms.Shortcut.Alt1;
-            this.miHisConfiguration.Text = "Danh sách thông số HIS";
+            //this.miHisConfiguration.Shortcut = System.Windows.Forms.Shortcut.Alt1;
+            this.miHisConfiguration.Text = "Danh sách Tagname";
             this.miHisConfiguration.Click += new System.EventHandler(this.miHisConfiguration_Click);
             // 
             // miPmisConfiguration
             // 
             this.miPmisConfiguration.Index = 1;
-            this.miPmisConfiguration.Shortcut = System.Windows.Forms.Shortcut.Alt2;
+            this.miPmisConfiguration.Visible = false;
+            //this.miPmisConfiguration.Shortcut = System.Windows.Forms.Shortcut.Alt2;
             this.miPmisConfiguration.Text = "Danh sách thông số PMIS";
             this.miPmisConfiguration.Click += new System.EventHandler(this.miPmisConfiguration_Click);
             // 
             // miFTPConnection
             // 
             this.miFTPConnection.Index = 2;
-            this.miFTPConnection.Shortcut = System.Windows.Forms.Shortcut.Alt3;
+            //this.miFTPConnection.Shortcut = System.Windows.Forms.Shortcut.Alt3;
             this.miFTPConnection.Text = "Cấu hình kết nối FTP";
             this.miFTPConnection.Click += new System.EventHandler(this.miFTPConnection_Click);
             // 
             // miManual
             // 
             this.miManual.Index = 3;
-            this.miManual.Shortcut = System.Windows.Forms.Shortcut.Alt4;
+            //this.miManual.Shortcut = System.Windows.Forms.Shortcut.Alt4;
             this.miManual.Text = "Gửi dữ liệu thủ công";
             this.miManual.Click += new System.EventHandler(this.miManual_Click);
             // 
             // miDatabaseConnection
             // 
             this.miDatabaseConnection.Index = 4;
-            this.miDatabaseConnection.Shortcut = System.Windows.Forms.Shortcut.Alt5;
+            this.miDatabaseConnection.Visible = false;
+            //this.miDatabaseConnection.Shortcut = System.Windows.Forms.Shortcut.Alt5;
             this.miDatabaseConnection.Text = "Cấu hình kết nối CSDL";
             this.miDatabaseConnection.Click += new System.EventHandler(this.miDatabaseConnection_Click);
             // 
             // miUserManagement
             // 
             this.miUserManagement.Index = 5;
-            this.miUserManagement.Shortcut = System.Windows.Forms.Shortcut.Alt6;
+            //this.miUserManagement.Shortcut = System.Windows.Forms.Shortcut.Alt6;
             this.miUserManagement.Text = "Quản lý người dùng";
             this.miUserManagement.Click += new System.EventHandler(this.miUserManagement_Click);
             // 
             // miReadDataConfiguration
             // 
             this.miReadDataConfiguration.Enabled = false;
+            this.miReadDataConfiguration.Visible = false;
             this.miReadDataConfiguration.Index = 6;
             this.miReadDataConfiguration.Text = "Cấu hình đọc dữ liệu";
             // 
             // miReadHistory
             // 
             this.miReadHistory.Enabled = false;
+            this.miReadHistory.Visible = false;
             this.miReadHistory.Index = 7;
             this.miReadHistory.Text = "Lịch sử đọc";
             // 

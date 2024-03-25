@@ -23,6 +23,7 @@ namespace FTP.Model
     {
         public DateTime LogTime { get; set; }
     }
+
     public class SaveData
     {
         public List<DataRaw> lstDataSave { get; set; }
@@ -32,5 +33,16 @@ namespace FTP.Model
         public string maThongSoNhap { get; set; }
         public string thoiDiem { get; set; }
         public string giaTri { get; set; }
+    }
+    public class MappingList
+    {
+        public Mapping[] data { get; set; }
+        public int status { get; set; }
+        public string message { get; set; }
+    }
+    public class Mapping
+    {
+        public string tagid { get; set; }
+        public string admeterid { get; set; }
     }
 }

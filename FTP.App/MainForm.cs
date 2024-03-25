@@ -18,10 +18,15 @@ using System.Timers;
 using System.Windows.Forms;
 using System.CodeDom;
 using static FTP.MainForm;
-using System.Net.Http.Headers;
 using System.Net.Http;
-using System.Text.Json;
+using System.Net.Http.Headers;
+using DevExpress.ClipboardSource.SpreadsheetML;
+using DevExpress.XtraPrinting.Native.WebClientUIControl;
+using System.Data;
 using System.Text.Json.Nodes;
+using System.Text.Json;
+using DevExpress.XtraPrinting.Native;
+using static DevExpress.Data.Helpers.ExpressiveSortInfo;
 
 namespace FTP
 {
@@ -248,7 +253,7 @@ namespace FTP
             MainForm.myTimer.Elapsed += new ElapsedEventHandler(PushData);
             var backGroundTimer = new System.Timers.Timer();
             var TimeInterval = Int32.Parse(System.Configuration.ConfigurationManager.AppSettings["TimeInterval"]);
-            backGroundTimer.Interval = TimeInterval * 1000;
+            backGroundTimer.Interval = TimeInterval * 60 * 1000;
             backGroundTimer.Elapsed += new ElapsedEventHandler(BackGroundJob);
             backGroundTimer.Start();
         }
@@ -337,19 +342,17 @@ namespace FTP
             myTimer.Interval = interval * 1000;
             _localFolder = folderPath;
         }
-        public static string sqlRuntime = @"select p.Folder, l.LogDate, l.LogTime, l.TagName, l.LastValue from BwAnalogTable l
-					INNER JOIN Params p ON l.TagName = p.TagName
-					where p.Interval is not null and p.Enable = 1
-					and l.LogDate = CONVERT(VARCHAR, DATEADD(MI, -1, @datetime), 11) 
-					and l.LogTime = SUBSTRING(CONVERT(VARCHAR, DATEADD(MI, -1, @datetime), 20), 12, 5) + ':00'";
+     //   public static string sqlRuntime = @"select p.Folder, l.LogDate, l.LogTime, l.TagName, l.LastValue from BwAnalogTable l
+					//INNER JOIN Params p ON l.TagName = p.TagName
+					//where p.Interval is not null and p.Enable = 1
+					//and l.LogDate = CONVERT(VARCHAR, DATEADD(MI, -1, @datetime), 11) 
+					//and l.LogTime = SUBSTRING(CONVERT(VARCHAR, DATEADD(MI, -1, @datetime), 20), 12, 5) + ':00'
+     //               and (DATEPART(MI, GETDATE())-1)%p.Interval=0";
+        public static string sqlRuntime = @"sp_GetBwAnalogTable";
+        private static Dictionary<string, Mapping> mappings;
 
-        public static string sqlRuntime5 = sqlRuntime + " and p.Interval = 5 ";
-        public static string sqlRuntime10 = sqlRuntime + " and (p.Interval = 5 OR p.Interval = 10) ";
-        public static string sqlRuntime15 = sqlRuntime + " and (p.Interval = 5 OR p.Interval = 15) ";
-        public static string sqlRuntime30 = sqlRuntime + " and (p.Interval = 5 OR p.Interval = 10 OR p.Interval = 15 OR p.Interval = 30) ";
         static void PushData(object sender, ElapsedEventArgs e)
         {
-            string sql = sqlRuntime5;
             System.Timers.Timer myTimer = (System.Timers.Timer)sender;
             myTimer.Stop();
 
@@ -357,13 +360,6 @@ namespace FTP
             var dtMinute = new DateTime(now.Year, now.Month, now.Day, now.Hour, now.Minute, 0, DateTimeKind.Local);
             if (now.Minute % 5 == 1)
             {
-                if (now.Minute % 10 == 1)
-                    sql = sqlRuntime10;
-                if (now.Minute % 15 == 1)
-                    sql = sqlRuntime15;
-                if (now.Minute % 30 == 1)
-                    sql = sqlRuntime30;
-
                 DateTime? lastQuery = GetLastQuery();
                 if (lastQuery == null || dtMinute > lastQuery)
                 {
@@ -371,7 +367,8 @@ namespace FTP
                     {
                         ["@datetime"] = now,
                     };
-                    var lstAnalogs = MainForm._repositoryRuntime.GetListFromParameters<AnalogTable>(sql, 1, parameters);
+                    //var lstAnalogs = MainForm._repositoryRuntime.GetListFromParameters<AnalogTable>(sqlRuntime, 1, parameters);
+                    var lstAnalogs = MainForm._repositoryRuntime.GetListFromParameters<AnalogTable>(sqlRuntime, 4, parameters);
                     var PushingDatas = lstAnalogs.GroupBy(a => a.Folder).Select(o => new
                     {
                         Folder = o.Key,
@@ -384,7 +381,7 @@ namespace FTP
                     {
                         var options = new ParallelOptions()
                         {
-                            MaxDegreeOfParallelism = 6
+                            MaxDegreeOfParallelism = PushingDatas.Length
                         };
                         Parallel.For(0, PushingDatas.Length, options, i =>
                         {
@@ -405,6 +402,17 @@ namespace FTP
         {
             string sql = @"select top 1 LogTime from LastQuery";
             var result = _repositoryMiddle.GetObject<LastQuery>(sql, 1, null);
+            return result?.LogTime;
+        }
+
+        private static DateTime? GetLastLogDateTime(DateTime lastQuery)
+        {
+            string sql = @"sp_GetLastLogDate";
+            var parameters = new Dictionary<string, object>()
+            {
+                ["@LastQuery"] = lastQuery,
+            };
+            var result = _repositoryMiddle.GetObject<LastQuery>(sql, 4, parameters);
             return result?.LogTime;
         }
 
@@ -581,17 +589,17 @@ namespace FTP
                     MainForm._instance.SetText(sb.ToString());
                     break;
                 case (int)eStatusError.CreateFileSuccessSendFtpError:
-                    log = string.Format("{0}: " + "Tạo file {1} thành công! Gửi FTP lỗi!", DateTime.Now.ToString("HH:mm:ss dd/MM/yyyy"), fileName);
-                    Logging.Instance.Logger.Info(log);
-                    sb = new StringBuilder();
-                    if (background)
-                        sb.AppendLine("Xử lý ngầm: " + log);
-                    else
-                        sb.AppendLine(log);
+                    //log = string.Format("{0}: " + "Tạo file {1} thành công! Gửi FTP lỗi!", DateTime.Now.ToString("HH:mm:ss dd/MM/yyyy"), fileName);
+                    //Logging.Instance.Logger.Info(log);
+                    //sb = new StringBuilder();
+                    //if (background)
+                    //    sb.AppendLine("Xử lý ngầm: " + log);
+                    //else
+                    //    sb.AppendLine(log);
 
-                    if (!string.IsNullOrEmpty(MainForm._instance.txtLog.Text))
-                        sb.Append(MainForm._instance.txtLog.Text);
-                    MainForm._instance.SetText(sb.ToString());
+                    //if (!string.IsNullOrEmpty(MainForm._instance.txtLog.Text))
+                    //    sb.Append(MainForm._instance.txtLog.Text);
+                    //MainForm._instance.SetText(sb.ToString());
                     break;
                 case (int)eStatusError.ErrorAll:
                     log = string.Format("{0}: " + "Tạo file {1} lỗi!", DateTime.Now.ToString("HH:mm:ss dd/MM/yyyy"), fileName);
@@ -633,7 +641,7 @@ namespace FTP
                 {
                     var options = new ParallelOptions()
                     {
-                        MaxDegreeOfParallelism = 6
+                        MaxDegreeOfParallelism = folderAndFileList.Length
                     };
                     Parallel.For(0, folderAndFileList.Length, options, i =>
                     {
@@ -653,65 +661,7 @@ namespace FTP
 
             myTimer.Start();
         }
-        private static async void CallApiToSaveDB(string content)
-        {
-            var arrHis = content.Split('\n');
-            if (arrHis != null && arrHis.Length > 1)
-            {
-                // Bo qua dong tieu de
-                SaveData saveData = new SaveData();
-                saveData.lstDataSave = new List<DataRaw>();
-                for (int i = 1; i < arrHis.Length; i++)
-                {
-                    string hisContent = arrHis[i];
-                    var his = hisContent.Split(',');
-                    if (his.Length >= 3)
-                    {
-                        DataRaw data = new DataRaw() { maThongSoNhap = his[0], thoiDiem = his[1], giaTri = his[2] };
-                        saveData.lstDataSave.Add(data);
-                    }
-                }
-                string token = string.Empty;
-                string json = await Login(System.Configuration.ConfigurationManager.AppSettings["PushDataUrl"], "admin", "admin<<<<!@@//@@!>>>>123");
-                var objectData = JsonSerializer.Deserialize<JsonObject>(json);
-                if (objectData?["status"] != null && objectData["status"]?.ToString() == "1")
-                {
-                    token = objectData["token"]?.ToString();
-                }
-                if (!string.IsNullOrEmpty(token))
-                    await PushDataApi(token, saveData);
-            }
-        }
 
-        private static async Task PushDataApi(string token, SaveData saveData)
-        {
-            using (var httpClient = new HttpClient())
-            {
-                httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-                string url = System.Configuration.ConfigurationManager.AppSettings["PushDataUrl"];
-                var jsonData = System.Text.Json.JsonSerializer.Serialize(saveData);
-                var content = new StringContent(jsonData, Encoding.UTF8, "application/json");
-                var response = await httpClient.PostAsync(url, content);
-                var rerult = response.Content.ReadAsStringAsync().Result;
-                var objectResult = System.Text.Json.JsonSerializer.Deserialize<JsonObject>(rerult);
-                if (objectResult?["status"] != null && objectResult["status"]?.ToString() == "1")
-                {
-                    //ThanhCong;
-                }
-            }
-        }
-
-        private static async Task<string> Login(string url, string username, string password)
-        {
-            using (var httpClient = new HttpClient())
-            {
-                var json = System.Text.Json.JsonSerializer.Serialize(new { userId = username, password = password });
-                var content = new StringContent(json, Encoding.UTF8, "application/json");
-                var response = await httpClient.PostAsync(url, content);
-                var rerult = response.Content.ReadAsStringAsync().Result;
-                return rerult;
-            }
-        }
         static (string folder, string timeFolder, string[] lstFiles)[] GetFolderAndFileList(string nowFolder)
         {
             (string, string, string[])[] FolderAndFiles;
@@ -810,7 +760,7 @@ namespace FTP
                 return downloadFiles;
             }
         }
-        static void DownloadFromFolder((string folder, string timeFolder, string[] lstFiles) folderAndFileList)
+        static async void DownloadFromFolder((string folder, string timeFolder, string[] lstFiles) folderAndFileList)
         {
             bool downSuccess = true;
             int iDown = 0;
@@ -821,18 +771,34 @@ namespace FTP
             if (!Directory.Exists(_localFolder + "\\" + folderAndFileList.folder + "\\" + folderAndFileList.timeFolder))
                 Directory.CreateDirectory(_localFolder + "\\" + folderAndFileList.folder + "\\" + folderAndFileList.timeFolder);
 
-            var options = new ParallelOptions()
+
+
+
+            string token = string.Empty;
+            string json = await Login(System.Configuration.ConfigurationManager.AppSettings["PushDataUrl"], "admin", "admin<<<<!@@//@@!>>>>123");
+            var objectData = JsonSerializer.Deserialize<JsonObject>(json);
+            if (objectData?["status"] != null && objectData["status"]?.ToString() == "1")
             {
-                MaxDegreeOfParallelism = 5
-            };
-            Parallel.For(0, folderAndFileList.lstFiles.Length, options, i =>
+                token = objectData["token"]?.ToString();
+            }
+
+            mappings = (await GetMapping(token)).ToDictionary(i => i.tagid);
+
+            if (!string.IsNullOrEmpty(token))
             {
-                Download(folderAndFileList.folder + "\\" + folderAndFileList.timeFolder, folderAndFileList.folder + "//" + folderAndFileList.timeFolder + "//" + folderAndFileList.lstFiles[i], folderAndFileList.lstFiles[i]);
-                Thread.Sleep(10);
-            });   
+                var options = new ParallelOptions()
+                {
+                    MaxDegreeOfParallelism = folderAndFileList.lstFiles.Length
+                };
+                Parallel.For(0, folderAndFileList.lstFiles.Length, options, i =>
+                {
+                    Download(token, folderAndFileList.folder + "\\" + folderAndFileList.timeFolder, folderAndFileList.folder + "//" + folderAndFileList.timeFolder + "//" + folderAndFileList.lstFiles[i], folderAndFileList.lstFiles[i]);
+                    Thread.Sleep(10);
+                });
+            }
         }
 
-        static void Download(string folder, string file, string fileName)
+        static async void Download(string token, string folder, string file, string fileName)
         {
             bool downSuccess = true;
             int iDown = 0;
@@ -876,8 +842,8 @@ namespace FTP
                 {
                     content = sr.ReadToEnd();
                 }
-                 CallApiToSaveDB(content);
 
+                await CallApiToSaveDB(token, content);
 
                 //string decryptData = Helper.DecryptRSA(Helper.PassCode, content.Replace("\0", string.Empty));
                 //var arrHis = decryptData.Split('\n');
@@ -989,6 +955,81 @@ namespace FTP
             }
         }
 
+        private static async Task CallApiToSaveDB(string token, string content)
+        {
+            var arrHis = content.Split('\n');
+            if (arrHis != null && arrHis.Length > 1)
+            {
+                // Bo qua dong tieu de
+                SaveData saveData = new SaveData();
+                saveData.lstDataSave = new List<DataRaw>();
+                for (int i = 1; i < arrHis.Length; i++)
+                {
+                    string hisContent = arrHis[i];
+                    var his = hisContent.Split(',');
+                    if (his.Length >= 3)
+                    {
+                        if (mappings != null && mappings.ContainsKey(his[0]))
+                        {
+                            DataRaw data = new DataRaw() { maThongSoNhap = mappings[his[0]]?.admeterid, thoiDiem = his[1], giaTri = his[2] };
+                            saveData.lstDataSave.Add(data);
+                        }
+                    }
+                }
+                if (!string.IsNullOrEmpty(token))
+                    await PushDataApi(token, saveData);
+            }
+        }
+
+        private static async Task PushDataApi(string token, SaveData saveData)
+        { 
+            using (var httpClient = new HttpClient())
+            {
+                httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                string url = System.Configuration.ConfigurationManager.AppSettings["PushDataUrl"];
+                var jsonData = System.Text.Json.JsonSerializer.Serialize (saveData);
+                var content = new StringContent(jsonData, Encoding.UTF8, "application/json");
+                var response = await httpClient.PostAsync(url, content);
+                var rerult = response.Content.ReadAsStringAsync().Result;
+                var objectResult = System.Text.Json.JsonSerializer.Deserialize<JsonObject>(rerult);
+                if (objectResult?["status"] != null && objectResult["status"]?.ToString() == "1")
+                {
+                    //ThanhCong;
+                }
+            }
+        }
+
+        private static async Task<string> Login(string url, string username, string password)
+        {
+            using (var httpClient = new HttpClient())
+            {
+                var json = System.Text.Json.JsonSerializer.Serialize(new { userId = username, password = password });
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                var response = await httpClient.PostAsync(url, content);
+                var rerult = response.Content.ReadAsStringAsync().Result;
+                return rerult;
+            }
+        }
+
+        private static async Task<Mapping[]> GetMapping(string token)
+        {
+            using (var httpClient = new HttpClient())
+            {
+                httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                string url = System.Configuration.ConfigurationManager.AppSettings["GetMappingUrl"];
+                //var jsonData = System.Text.Json.JsonSerializer.Serialize(saveData);
+                //var content = new StringContent(jsonData, Encoding.UTF8, "application/json");
+                var response = await httpClient.PostAsync(url, null);
+                var rerult = response.Content.ReadAsStringAsync().Result;
+                var objectResult = System.Text.Json.JsonSerializer.Deserialize<MappingList>(rerult);
+                if (objectResult != null && objectResult.status == 1)
+                {
+                    return await Task.FromResult(objectResult.data);
+                }
+            }
+            return null;
+        }
+            
         public static void LogPull(int statusError, string fileName)
         {
             string log = string.Empty;
@@ -1078,7 +1119,7 @@ namespace FTP
                     MainForm.Run();
 
 
-                    MainForm.ReConfig(_config.Destination, _config.UserName, _config.Password/*Helper.Base64Decode(_config.Password)*/, _config.Timer, _config.Source);
+                    MainForm.ReConfig(_config.Destination, _config.UserName, FTP.Common.Helper.Base64Decode(_config.Password), _config.Timer, _config.Source);
                     MainForm.JobState = (int)MainForm.eJobState.Running;
                     btnMainStop.Enabled = true;
                     btnMainStart.Enabled = false;
