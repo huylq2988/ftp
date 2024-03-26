@@ -27,6 +27,7 @@ using System.Text.Json.Nodes;
 using System.Text.Json;
 using DevExpress.XtraPrinting.Native;
 using static DevExpress.Data.Helpers.ExpressiveSortInfo;
+using static DevExpress.Data.Helpers.FindSearchRichParser;
 
 namespace FTP
 {
@@ -363,9 +364,10 @@ namespace FTP
                 DateTime? lastQuery = GetLastQuery();
                 if (lastQuery == null || dtMinute > lastQuery)
                 {
+                    DateTime? lastLogDate = GetLastLogDateTime(lastQuery);
                     var parameters = new Dictionary<string, object>()
                     {
-                        ["@datetime"] = now,
+                        ["@datetime"] = lastLogDate//now,
                     };
                     //var lstAnalogs = MainForm._repositoryRuntime.GetListFromParameters<AnalogTable>(sqlRuntime, 1, parameters);
                     var lstAnalogs = MainForm._repositoryRuntime.GetListFromParameters<AnalogTable>(sqlRuntime, 4, parameters);
@@ -388,7 +390,8 @@ namespace FTP
                             PushFtp(now, (PushingDatas[i]?.Folder, PushingDatas[i]?.AnalogTables));
                             Thread.Sleep(10);
                         });
-                        UpsertLastQuery(dtMinute);
+                        //UpsertLastQuery(dtMinute);
+                        UpsertLastQuery(lastLogDate);
                     }
                     stopWatch.Stop();
                     //MessageBox.Show($"Time Taken to Execute Parallel For Loop in miliseconds {stopWatch.ElapsedMilliseconds}");
@@ -405,18 +408,18 @@ namespace FTP
             return result?.LogTime;
         }
 
-        private static DateTime? GetLastLogDateTime(DateTime lastQuery)
+        private static DateTime? GetLastLogDateTime(DateTime? lastQuery)
         {
             string sql = @"sp_GetLastLogDate";
             var parameters = new Dictionary<string, object>()
             {
                 ["@LastQuery"] = lastQuery,
             };
-            var result = _repositoryMiddle.GetObject<LastQuery>(sql, 4, parameters);
+            var result = _repositoryRuntime.GetObject<LastQuery>(sql, 4, parameters);
             return result?.LogTime;
         }
 
-        static void UpsertLastQuery(DateTime now)
+        static void UpsertLastQuery(DateTime? now)
         {
             string sql = @"IF (NOT EXISTS (SELECT 1 FROM LastQuery)) 
                     BEGIN 
@@ -528,7 +531,7 @@ namespace FTP
                 //create the directory
                 FtpWebRequest requestDir = (FtpWebRequest)FtpWebRequest.Create(new Uri(directory));
                 requestDir.Method = WebRequestMethods.Ftp.MakeDirectory;
-                requestDir.Credentials = new NetworkCredential(_username, _password);
+                requestDir.Credentials = new NetworkCredential(_userName, _password);
                 requestDir.UsePassive = true;
                 requestDir.UseBinary = true;
                 requestDir.KeepAlive = false;
@@ -542,7 +545,7 @@ namespace FTP
                 {
                     FtpWebRequest requestSub = (FtpWebRequest)FtpWebRequest.Create(new Uri(directory + "//" + subFolder));
                     requestSub.Method = WebRequestMethods.Ftp.MakeDirectory;
-                    requestSub.Credentials = new NetworkCredential(_username, _password);
+                    requestSub.Credentials = new NetworkCredential(_userName, _password);
                     requestSub.UsePassive = true;
                     requestSub.UseBinary = true;
                     requestSub.KeepAlive = false;
@@ -635,19 +638,23 @@ namespace FTP
             try
             {
                 // get file from FTP Server
-                var nowFolder = DateTime.Today.ToString("yyyyMMdd");
-                var folderAndFileList = GetFolderAndFileList(nowFolder);
-                if (folderAndFileList != null && folderAndFileList.Length > 0)
+                var today = DateTime.Today;
+                for (int i = 7; i >= 0; i--)
                 {
-                    var options = new ParallelOptions()
+                    var folder = today.AddDays(-1 * i).ToString("yyyyMMdd");
+                    var folderAndFileList = GetFolderAndFileList(folder);
+                    if (folderAndFileList != null && folderAndFileList.Length > 0)
                     {
-                        MaxDegreeOfParallelism = folderAndFileList.Length
-                    };
-                    Parallel.For(0, folderAndFileList.Length, options, i =>
-                    {
-                        DownloadFromFolder(folderAndFileList[i]);
-                        Thread.Sleep(100);
-                    });
+                        var options = new ParallelOptions()
+                        {
+                            MaxDegreeOfParallelism = folderAndFileList.Length
+                        };
+                        Parallel.For(0, folderAndFileList.Length, options, j =>
+                        {
+                            DownloadFromFolder(folderAndFileList[j]);
+                            Thread.Sleep(100);
+                        });
+                    }
                 }
             }
             catch (Exception ex)
@@ -762,8 +769,6 @@ namespace FTP
         }
         static async void DownloadFromFolder((string folder, string timeFolder, string[] lstFiles) folderAndFileList)
         {
-            bool downSuccess = true;
-            int iDown = 0;
             //var now = DateTime.Today.ToString("yyyyMMdd");
             //var currentFolder = _localFolder + "\\" + now;
             if (!Directory.Exists(_localFolder + "\\" + folderAndFileList.folder))
@@ -772,10 +777,8 @@ namespace FTP
                 Directory.CreateDirectory(_localFolder + "\\" + folderAndFileList.folder + "\\" + folderAndFileList.timeFolder);
 
 
-
-
             string token = string.Empty;
-            string json = await Login(System.Configuration.ConfigurationManager.AppSettings["PushDataUrl"], "admin", "admin<<<<!@@//@@!>>>>123");
+            string json = await Login(System.Configuration.ConfigurationManager.AppSettings["TokenUrl"], "admin", "admin<<<<!@@//@@!>>>>123");
             var objectData = JsonSerializer.Deserialize<JsonObject>(json);
             if (objectData?["status"] != null && objectData["status"]?.ToString() == "1")
             {
@@ -783,19 +786,12 @@ namespace FTP
             }
 
             mappings = (await GetMapping(token)).ToDictionary(i => i.tagid);
-
-            if (!string.IsNullOrEmpty(token))
-            {
-                var options = new ParallelOptions()
+            if (folderAndFileList.lstFiles != null && folderAndFileList.lstFiles.Any())
+                foreach (var file in folderAndFileList.lstFiles)
                 {
-                    MaxDegreeOfParallelism = folderAndFileList.lstFiles.Length
-                };
-                Parallel.For(0, folderAndFileList.lstFiles.Length, options, i =>
-                {
-                    Download(token, folderAndFileList.folder + "\\" + folderAndFileList.timeFolder, folderAndFileList.folder + "//" + folderAndFileList.timeFolder + "//" + folderAndFileList.lstFiles[i], folderAndFileList.lstFiles[i]);
+                    Download(token, folderAndFileList.folder + "\\" + folderAndFileList.timeFolder, folderAndFileList.folder + "//" + folderAndFileList.timeFolder + "//" + file, file);
                     Thread.Sleep(10);
-                });
-            }
+                }
         }
 
         static async void Download(string token, string folder, string file, string fileName)
@@ -833,55 +829,12 @@ namespace FTP
                         bytesRead = responseStream.Read(buffer, 0, Length);
                     }
                 }
-
-                // Lay content ra decode va luu vao DB
-                //string content = System.Text.Encoding.UTF8.GetString(buffer);
-
                 string content = string.Empty;
                 using (StreamReader sr = new StreamReader(fullFileNameSave))
                 {
                     content = sr.ReadToEnd();
                 }
-
                 await CallApiToSaveDB(token, content);
-
-                //string decryptData = Helper.DecryptRSA(Helper.PassCode, content.Replace("\0", string.Empty));
-                //var arrHis = decryptData.Split('\n');
-                //if (arrHis != null && arrHis.Length > 1)
-                //{
-                //    string tableName = "";
-                //    DateTime appstartday = DateTime.Now;
-                //    LocalDAL dal = new LocalDAL();
-                //    dal.checkExistTableInDB(ref tableName, ref appstartday);
-                //    // Bo qua dong tieu de
-                //    for (int i = 1; i < arrHis.Length; i++)
-                //    {
-                //        string hisContent = arrHis[i];
-                //        var his = hisContent.Split(',');
-                //        if (his.Length >= 3)
-                //        {
-                //            // GHEP DAL
-                //            string tagName = his[0];
-                //            string dateTime = his[1];
-                //            string value = his[2];
-
-                //            if (value != null)
-                //            {
-                //                value = value.Replace("\r", "").Replace("\n", "");
-                //            }
-
-                //            String ameterid = getAmeterid(tagName);
-                //            if (ameterid != null && !ameterid.Trim().Equals(""))
-                //            {
-                //                dal.insertToDB(tableName, appstartday, ameterid, DateTime.Parse(dateTime), value);
-                //            }
-                //        }
-                //    }
-                //}
-
-
-
-                //writeStream.Close();
                 downResponse.Close();
             }
             catch (WebException wEx)
@@ -895,7 +848,6 @@ namespace FTP
             catch (Exception ex)
             {
                 iDown++;
-                //MessageBox.Show(ex.Message, "Download Error");
                 if (iDown < 3)
                     goto Label_Down;
                 else
@@ -925,7 +877,7 @@ namespace FTP
                 try
                 {
                     FtpWebRequest delReqFTP;
-                    delReqFTP = (FtpWebRequest)FtpWebRequest.Create(new Uri(_ftpLink + file));
+                    delReqFTP = (FtpWebRequest)FtpWebRequest.Create(new Uri(fullFileNameFtpDown));
                     delReqFTP.Credentials = new NetworkCredential(_userName, _password);
                     delReqFTP.KeepAlive = false;
                     delReqFTP.Method = WebRequestMethods.Ftp.DeleteFile;
